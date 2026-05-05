@@ -376,6 +376,8 @@ const MEDICARE_ITEMS = [
 
 // ══ STATE ══
 let licenceKey = '';
+let maxStaff = 5;
+let planInfo = { plan: 'beta', maxStaff: 5 };
 let clinicData = null;
 let currentModal = '';
 
@@ -436,6 +438,11 @@ async function loadData(key) {
     const res = await fetch(`/api/load?licenceKey=${encodeURIComponent(key)}`);
     if (!res.ok) return null;
     const json = await res.json();
+    // Store plan info globally
+    if (json.plan) {
+      planInfo = { plan: json.plan, maxStaff: json.maxStaff || 5 };
+      maxStaff = json.maxStaff || 5;
+    }
     return json.data;
   } catch(e) { return null; }
 }
@@ -444,18 +451,36 @@ async function loadData(key) {
 async function doLogin() {
   const key = document.getElementById('licence-input').value.trim();
   if (!key) return;
+  const btn = document.querySelector('.login-btn');
+  btn.textContent = 'Checking...';
+  btn.disabled = true;
   licenceKey = key;
-  const data = await loadData(key);
-  if (data && data.clinic) {
-    clinicData = data;
-    showDashboard();
-  } else if (data === null && key.length >= 6) {
-    // New valid key — go to setup
-    clinicData = null;
-    showSetup();
-  } else {
+  try {
+    const res = await fetch(`/api/load?licenceKey=${encodeURIComponent(key)}`);
+    const json = await res.json();
+    if (!res.ok) {
+      // Invalid key
+      document.getElementById('login-error').style.display = 'block';
+      btn.textContent = 'Access Dashboard →';
+      btn.disabled = false;
+      return;
+    }
+    // Store plan info
+    planInfo = { plan: json.plan || 'beta', maxStaff: json.maxStaff || 5 };
+    maxStaff = json.maxStaff || 5;
+    if (json.data && json.data.clinic) {
+      clinicData = json.data;
+      showDashboard();
+    } else {
+      // New valid key — go to setup
+      clinicData = null;
+      showSetup();
+    }
+  } catch(e) {
     document.getElementById('login-error').style.display = 'block';
   }
+  btn.textContent = 'Access Dashboard →';
+  btn.disabled = false;
 }
 
 document.getElementById('licence-input').addEventListener('keydown', e => {
@@ -490,6 +515,13 @@ function goStep(n) {
 }
 
 function addStaff() {
+  // Count current staff
+  const currentStaff = document.querySelectorAll('[id^="staff-name-"]').length;
+  if (currentStaff >= maxStaff) {
+    const planName = planInfo.plan.charAt(0).toUpperCase() + planInfo.plan.slice(1);
+    alert(`Your ${planName} plan supports up to ${maxStaff} staff members.\n\nTo add more staff, please upgrade your plan at clinicshield.com.au`);
+    return;
+  }
   staffCount++;
   const id = staffCount;
   const list = document.getElementById('staff-list');
