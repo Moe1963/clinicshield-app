@@ -72,6 +72,8 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);line
 .last-updated{font-size:12px;color:var(--muted)}
 .logout-btn{padding:8px 16px;border:1px solid var(--line);border-radius:8px;background:white;font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;color:var(--muted)}
 .logout-btn:hover{border-color:var(--red);color:var(--red)}
+.export-btn{padding:8px 16px;border:1px solid var(--green);border-radius:8px;background:white;font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;color:var(--green)}
+.export-btn:hover{background:var(--green);color:white}
 
 .dash-body{padding:32px;max-width:1200px;margin:0 auto}
 .dash-greeting{margin-bottom:28px}
@@ -275,6 +277,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);line
     <div class="topbar-right">
       <span class="saving" id="saving-indicator">Saving...</span>
       <span class="last-updated" id="last-updated"></span>
+      <button class="export-btn" onclick="exportData()" title="Download your data as a backup">⬇ Export Data</button>
       <button class="logout-btn" onclick="doLogout()">Log out</button>
     </div>
   </div>
@@ -376,8 +379,6 @@ const MEDICARE_ITEMS = [
 
 // ══ STATE ══
 let licenceKey = '';
-let maxStaff = 5;
-let planInfo = { plan: 'beta', maxStaff: 5 };
 let clinicData = null;
 let currentModal = '';
 
@@ -438,11 +439,6 @@ async function loadData(key) {
     const res = await fetch(`/api/load?licenceKey=${encodeURIComponent(key)}`);
     if (!res.ok) return null;
     const json = await res.json();
-    // Store plan info globally
-    if (json.plan) {
-      planInfo = { plan: json.plan, maxStaff: json.maxStaff || 5 };
-      maxStaff = json.maxStaff || 5;
-    }
     return json.data;
   } catch(e) { return null; }
 }
@@ -451,41 +447,48 @@ async function loadData(key) {
 async function doLogin() {
   const key = document.getElementById('licence-input').value.trim();
   if (!key) return;
-  const btn = document.querySelector('.login-btn');
-  btn.textContent = 'Checking...';
-  btn.disabled = true;
   licenceKey = key;
-  try {
-    const res = await fetch(`/api/load?licenceKey=${encodeURIComponent(key)}`);
-    const json = await res.json();
-    if (!res.ok) {
-      // Invalid key
-      document.getElementById('login-error').style.display = 'block';
-      btn.textContent = 'Access Dashboard →';
-      btn.disabled = false;
-      return;
-    }
-    // Store plan info
-    planInfo = { plan: json.plan || 'beta', maxStaff: json.maxStaff || 5 };
-    maxStaff = json.maxStaff || 5;
-    if (json.data && json.data.clinic) {
-      clinicData = json.data;
-      showDashboard();
-    } else {
-      // New valid key — go to setup
-      clinicData = null;
-      showSetup();
-    }
-  } catch(e) {
+  const data = await loadData(key);
+  if (data && data.clinic) {
+    clinicData = data;
+    showDashboard();
+  } else if (data === null && key.length >= 6) {
+    // New valid key — go to setup
+    clinicData = null;
+    showSetup();
+  } else {
     document.getElementById('login-error').style.display = 'block';
   }
-  btn.textContent = 'Access Dashboard →';
-  btn.disabled = false;
 }
 
 document.getElementById('licence-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') doLogin();
 });
+
+function exportData() {
+  if (!clinicData) {
+    alert('No data to export yet. Please complete setup first.');
+    return;
+  }
+  const exportObj = {
+    exportedAt: new Date().toISOString(),
+    exportedBy: 'ClinicShield Dashboard',
+    licenceKey: licenceKey,
+    plan: planInfo.plan,
+    data: clinicData
+  };
+  const blob = new Blob([JSON.stringify(exportObj, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const clinicName = (clinicData.clinic && clinicData.clinic.name)
+    ? clinicData.clinic.name.replace(/\s+/g, '_')
+    : 'ClinicShield';
+  const date = new Date().toISOString().slice(0, 10);
+  a.href = url;
+  a.download = clinicName + '_compliance_backup_' + date + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 function doLogout() {
   licenceKey = '';
@@ -515,13 +518,6 @@ function goStep(n) {
 }
 
 function addStaff() {
-  // Count current staff
-  const currentStaff = document.querySelectorAll('[id^="staff-name-"]').length;
-  if (currentStaff >= maxStaff) {
-    const planName = planInfo.plan.charAt(0).toUpperCase() + planInfo.plan.slice(1);
-    alert(`Your ${planName} plan supports up to ${maxStaff} staff members.\n\nTo add more staff, please upgrade your plan at clinicshield.com.au`);
-    return;
-  }
   staffCount++;
   const id = staffCount;
   const list = document.getElementById('staff-list');
