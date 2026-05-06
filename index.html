@@ -380,6 +380,8 @@ const MEDICARE_ITEMS = [
 // ══ STATE ══
 let licenceKey = '';
 let clinicData = null;
+let maxStaff = 5;
+let planInfo = { plan: 'beta', maxStaff: 5 };
 let currentModal = '';
 
 // ══ UTILITIES ══
@@ -466,28 +468,31 @@ document.getElementById('licence-input').addEventListener('keydown', e => {
 });
 
 function exportData() {
-  if (!clinicData) {
-    alert('No data to export yet. Please complete setup first.');
-    return;
-  }
   const exportObj = {
     exportedAt: new Date().toISOString(),
     exportedBy: 'ClinicShield Dashboard',
     licenceKey: licenceKey,
-    plan: planInfo.plan,
-    data: clinicData
+    plan: planInfo ? planInfo.plan : 'beta',
+    data: clinicData || {}
   };
-  const blob = new Blob([JSON.stringify(exportObj, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  const clinicName = (clinicData.clinic && clinicData.clinic.name)
-    ? clinicData.clinic.name.replace(/\s+/g, '_')
-    : 'ClinicShield';
-  const date = new Date().toISOString().slice(0, 10);
-  a.href = url;
-  a.download = clinicName + '_compliance_backup_' + date + '.json';
-  a.click();
-  URL.revokeObjectURL(url);
+  try {
+    const blob = new Blob([JSON.stringify(exportObj, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const clinicName = (clinicData && clinicData.clinic && clinicData.clinic.name)
+      ? clinicData.clinic.name.replace(/\s+/g, '_')
+      : 'ClinicShield';
+    const date = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = clinicName + '_compliance_backup_' + date + '.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    alert('Export complete! Check your Downloads folder.');
+  } catch(e) {
+    alert('Export failed: ' + e.message);
+  }
 }
 
 function doLogout() {
